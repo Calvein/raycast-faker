@@ -1,91 +1,145 @@
-import { ActionPanel, Action, List } from "@raycast/api";
-import { useFetch, Response } from "@raycast/utils";
-import { useState } from "react";
-import { URLSearchParams } from "node:url";
+import { useEffect, useState } from "react";
+import { ActionPanel, Icon, List, Action, LocalStorage } from "@raycast/api";
+import { faker, type UsableLocale } from "@faker-js/faker";
+import { reduce, get, isFunction, isObject, groupBy, startCase } from "lodash";
+
+type Item = {
+  section: string;
+  id: string;
+  value: string;
+  getValue(): string;
+};
+
+const blacklistPaths = [
+  "locales",
+  "locale",
+  "localeFallback",
+  "definitions",
+  "fake",
+  "faker",
+  "unique",
+  "helpers",
+  "mersenne",
+  "random",
+];
+
+const buildItems = (path: string) => {
+  return reduce(
+    path ? get(faker, path) : faker,
+    (acc: Item[], func, key) => {
+      if (blacklistPaths.includes(key)) {
+        return acc;
+      }
+
+      if (isFunction(func)) {
+        const getValue = (): string => {
+          const value = func();
+          return value ? value.toString() : "";
+        };
+        acc.push({ section: path, id: key, value: getValue(), getValue });
+      } else if (isObject(func)) {
+        acc.push(...buildItems(path ? `${path}.${key}` : key));
+      }
+
+      return acc;
+    },
+    []
+  );
+};
 
 export default function Command() {
-  const [searchText, setSearchText] = useState("");
-  const { data, isLoading } = useFetch(
-    "https://api.npms.io/v2/search?" +
-      // send the search query to the API
-      new URLSearchParams({ q: searchText.length === 0 ? "@raycast/api" : searchText }),
-    {
-      parseResponse: parseFetchResponse,
-    }
-  );
+  return <Items />;
+}
+
+function Items() {
+  const [groupedItems, setGroupedItems] = useState<Record<string, Item[]>>({});
+  useEffect(() => {
+    const init = async () => {
+      const locale = (await LocalStorage.getItem("locale")) || "en";
+      console.log(locale);
+      faker.setLocale(locale as UsableLocale);
+      setGroupedItems(groupBy(buildItems(""), "section"));
+    };
+    init();
+  }, []);
 
   return (
-    <List
-      isLoading={isLoading}
-      onSearchTextChange={setSearchText}
-      searchBarPlaceholder="Search npm packages..."
-      throttle
-    >
-      <List.Section title="Results" subtitle={data?.length + ""}>
-        {data?.map((searchResult) => (
-          <SearchListItem key={searchResult.name} searchResult={searchResult} />
-        ))}
-      </List.Section>
+    <List isShowingDetail isLoading={!groupedItems}>
+      {Object.entries(groupedItems).map(([section, items]) => (
+        <List.Section key={section} title={startCase(section)}>
+          {items.map((item) => (
+            <Item key={item.id} item={item} />
+          ))}
+        </List.Section>
+      ))}
     </List>
   );
 }
 
-function SearchListItem({ searchResult }: { searchResult: SearchResult }) {
+function Item({ item }: { item: Item }) {
+  const [value, setValue] = useState(item.value);
+  const updateValue = async () => {
+    setValue(item.getValue());
+  };
+
   return (
     <List.Item
-      title={searchResult.name}
-      subtitle={searchResult.description}
-      accessoryTitle={searchResult.username}
+      title={startCase(item.id)}
+      icon={Icon.Dot}
+      keywords={[item.section]}
+      detail={<List.Item.Detail markdown={value} />}
       actions={
         <ActionPanel>
-          <ActionPanel.Section>
-            <Action.OpenInBrowser title="Open in Browser" url={searchResult.url} />
-          </ActionPanel.Section>
-          <ActionPanel.Section>
-            <Action.CopyToClipboard
-              title="Copy Install Command"
-              content={`npm install ${searchResult.name}`}
-              shortcut={{ modifiers: ["cmd"], key: "." }}
-            />
-          </ActionPanel.Section>
+          <Action.Paste content={value} onPaste={updateValue} />
+          <Action.CopyToClipboard content={value} onCopy={updateValue} />
+          <Action
+            title="Refresh Value"
+            icon={Icon.RotateClockwise}
+            shortcut={{ modifiers: ["ctrl"], key: "r" }}
+            onAction={updateValue}
+          />
+          <Action.Push
+            icon={Icon.Map}
+            shortcut={{ modifiers: ["ctrl"], key: "f" }}
+            title="Choose default language"
+            target={<Locales />}
+          />
         </ActionPanel>
       }
     />
   );
 }
 
-/** Parse the response from the fetch query into something we can display */
-async function parseFetchResponse(response: Response) {
-  const json = (await response.json()) as
-    | {
-        results: {
-          package: {
-            name: string;
-            description?: string;
-            publisher?: { username: string };
-            links: { npm: string };
-          };
-        }[];
-      }
-    | { code: string; message: string };
+function Locales() {
+  return (
+    <List searchBarPlaceholder="Choose default language">
+      <List.Section title="Languages">
+        {Object.entries(faker.locales).map(([key, locale]) => {
+          if (!locale) return null;
 
-  if (!response.ok || "message" in json) {
-    throw new Error("message" in json ? json.message : response.statusText);
-  }
-
-  return json.results.map((result) => {
-    return {
-      name: result.package.name,
-      description: result.package.description,
-      username: result.package.publisher?.username,
-      url: result.package.links.npm,
-    } as SearchResult;
-  });
-}
-
-interface SearchResult {
-  name: string;
-  description?: string;
-  username?: string;
-  url: string;
+          return (
+            <List.Item
+              key={key}
+              icon={Icon.Dot}
+              title={locale.title}
+              actions={
+                <ActionPanel>
+                  <ActionPanel.Section>
+                    <Action.Push
+                      title="Choose language"
+                      target={<Items />}
+                      onPush={() => {
+                        faker.locale = key;
+                        LocalStorage.setItem("locale", key);
+                      }}
+                    />
+                  </ActionPanel.Section>
+                </ActionPanel>
+              }
+            />
+          );
+        })}
+      </List.Section>
+    </List>
+  );
 }

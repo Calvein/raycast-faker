@@ -1,9 +1,9 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "faker",
-  "title": "Faker",
+  "title": "Generate fake data",
   "description": "Generate fake data",
-  "icon": "command-icon.png",
+  "icon": "command-icon.svg",
   "author": "Calvein",
   "categories": [
     "Data"
@@ -12,7 +12,7 @@
   "commands": [
     {
       "name": "index",
-      "title": "faker",
+      "title": "Faker",
       "description": "Generate fake data",
       "mode": "view"
     }
@@ -20,9 +20,11 @@
   "dependencies": {
     "@faker-js/faker": "^7.6.0",
     "@raycast/api": "^1.41.1",
-    "@raycast/utils": "^1.4.8"
+    "@raycast/utils": "^1.4.8",
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
+    "@types/lodash": "^4.14.186",
     "@types/node": "16.10.3",
     "@types/react": "18.0.9",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
